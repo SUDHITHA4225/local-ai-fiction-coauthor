@@ -1,0 +1,94 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ai_fiction_app
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=False
+      - API_PORT=8000
+      - API_HOST=0.0.0.0
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=llama3.1:8b
+      - OLLAMA_TIMEOUT=300
+      - CHROMA_HOST=chromadb
+      - CHROMA_PORT=8000
+      - CHROMA_COLLECTION_NAME=story_lore
+      - EMBEDDING_MODEL_NAME=all-MiniLM-L6-v2
+      - TOP_K_RESULTS=3
+      - DEFAULT_TEMPERATURE=0.7
+      - DEFAULT_TOP_P=0.9
+      - DEFAULT_REPEAT_PENALTY=1.1
+      - DEFAULT_NUM_PREDICT=500
+      - PERSONA_PROMPT_FILE=prompts/persona.md
+    depends_on:
+      ollama:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    volumes:
+      - ./prompts:/app/prompts:ro
+      - ./docs:/app/docs:ro
+    networks:
+      - ai_network
+    restart: on-failure
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ai_fiction_ollama
+    ports:
+      - "11434:11434"
+    environment:
+      - OLLAMA_HOST=0.0.0.0:11434
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - ai_network
+    restart: on-failure
+    command: serve
+
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: ai_fiction_chromadb
+    ports:
+      - "8001:8000"
+    environment:
+      - CHROMA_HOST=0.0.0.0
+      - CHROMA_PORT=8000
+    volumes:
+      - chromadb_data:/chroma/chroma_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - ai_network
+    restart: on-failure
+
+volumes:
+  ollama_data:
+    driver: local
+  chromadb_data:
+    driver: local
+
+networks:
+  ai_network:
+    driver: bridge
